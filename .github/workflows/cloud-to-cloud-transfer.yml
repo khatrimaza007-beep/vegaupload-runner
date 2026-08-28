@@ -1,0 +1,48 @@
+name: Cloud-to-Cloud Upload
+
+run-name: Cloud job ${{ inputs.job_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      job_id:
+        description: Opaque broker job identifier
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: cloud-${{ inputs.job_id }}
+  cancel-in-progress: false
+
+jobs:
+  transfer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - name: Checkout runner
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq aria2
+          package_prefix=trans
+          package_suffix=ferit-py
+          python -m pip install --disable-pip-version-check "${package_prefix}${package_suffix}" httpx beautifulsoup4 pycryptodomex websockets uvloop gdown
+
+      - name: Run opaque broker job
+        env:
+          BROKER_URL: ${{ vars.CLOUD_BROKER_URL }}
+        run: |
+          test -n "$BROKER_URL"
+          python broker_job.py \
+            --broker-url "$BROKER_URL" \
+            --job-id "${{ inputs.job_id }}"
