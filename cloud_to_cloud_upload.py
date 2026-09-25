@@ -33,7 +33,7 @@ PIXELDRAIN_LIMIT_BYTES = 10_000_000_000
 PIXELDRAIN_UPLOAD_API = "https://pixeldrain.com/api/file"
 VIKINGFILE_API_ORIGIN = "https://vikingfile.com"
 SKYDROP_BYPASS_HEADER = "X-Vega-Worker-Key"
-SKYDROP_ORIGIN_HOSTS = {"drop1.vegadrive.top"}
+SKYDROP_ORIGIN_HOSTS = {"drop1.vegadrive.me", "drop1.vegadrive.top"}
 
 # The local dispatcher labels files that use the one-click Drive relay with
 # these names.  They are still staged generic HTTP downloads here, but they
@@ -100,7 +100,7 @@ def detect_source(url: str, requested_kind: str = "") -> str:
         or host == "drive.usercontent.google.com"
     ):
         return "gdrive"
-    if host == "skydrop.sbs" or host.endswith(".skydrop.sbs") or host == "drop1.vegadrive.top":
+    if host == "skydrop.sbs" or host.endswith(".skydrop.sbs") or host in SKYDROP_ORIGIN_HOSTS:
         return "skydrop"
     if any(item in host for item in ("googleusercontent.com", "ggpht.com", "photos.google.com", "vidfiles.com")):
         return "gphotos"
@@ -111,6 +111,9 @@ def detect_source(url: str, requested_kind: str = "") -> str:
 
 def add_skydrop_direct_flag(url: str) -> str:
     parsed = urlparse(url)
+    host = (parsed.hostname or "").lower().rstrip(".")
+    if host in SKYDROP_ORIGIN_HOSTS:
+        parsed = parsed._replace(netloc="drop1.vegadrive.me")
     pairs = [(key, value) for key, value in parse_qsl(parsed.query, keep_blank_values=True) if key.lower() != "alexdirect"]
     pairs.append(("alexdirect", "1"))
     return parsed._replace(query=urlencode(pairs, doseq=True)).geturl()
