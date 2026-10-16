@@ -243,6 +243,8 @@ def inspect_skydrop_source(url: str, requested_filename: str) -> ResolvedSource:
             content_type = response.headers.get("Content-Type", "")
             if is_html(content_type):
                 raise ValueError("SkyDrop resolved to HTML instead of media bytes.")
+            if content_type.lower().startswith('image/') and re.search(r'\.(mkv|mp4|avi|mov|webm|m4v|ts)$', requested_filename, re.I):
+                raise ValueError("SkyDrop returned a preview image instead of the expected video.")
             verified_url = str(response.url)
             size_bytes = response_size(response.headers)
     return ResolvedSource(
@@ -409,6 +411,8 @@ def inspect_http_source(url: str, requested_filename: str, kind: str) -> Resolve
             with client.stream("GET", direct_url, headers=request_headers) as response:
                 response.raise_for_status()
                 content_type = response.headers.get("Content-Type", "")
+                if content_type.lower().startswith('image/') and re.search(r'\.(mkv|mp4|avi|mov|webm|m4v|ts)$', requested_filename, re.I):
+                    raise ValueError("Source returned a preview image instead of the expected video.")
                 if not is_html(content_type):
                     return ResolvedSource(
                         original_url=url,
