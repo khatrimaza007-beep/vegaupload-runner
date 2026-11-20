@@ -850,6 +850,9 @@ def main() -> int:
     source_url = args.source_url
     requested_kind = args.source_kind or ""
     kind = detect_source(source_url, requested_kind)
+    targets = set(json.loads(os.environ.get('CLOUD_TARGET_PROVIDERS', '["transfer","pixeldrain","vikingfile"]')))
+    if not targets or not targets.issubset({'transfer', 'pixeldrain', 'vikingfile'}):
+        raise ValueError('Invalid cloud target providers.')
     if kind == "skydrop":
         source_url = add_skydrop_direct_flag(source_url)
     started_at = time.monotonic()
@@ -886,6 +889,8 @@ def main() -> int:
             pixel_keys = []
         pixel_keys = [str(value).strip() for value in pixel_keys if str(value).strip()]
         live_pixel_enabled = (
+            'pixeldrain' in targets
+            and
             requested_kind in PIXELDRAIN_SOURCE_KINDS
             and bool(pixel_keys)
             and 0 < source.size_bytes <= PIXELDRAIN_LIMIT_BYTES
@@ -912,18 +917,20 @@ def main() -> int:
         )
         provider_urls: dict[str, str] = {}
         provider_errors: dict[str, str] = {}
-        provider_tasks: dict[str, Any] = {
-            "transfer_url": lambda: upload_to_destination(local_path, args.upload_workers),
-        }
+        provider_tasks: dict[str, Any] = {}
+        if 'transfer' in targets:
+            provider_tasks['transfer_url'] = lambda: upload_to_destination(local_path, args.upload_workers)
         viking_hash = os.environ.get("CLOUD_VIKINGFILE_USER_HASH", "").strip()
-        if not live_pixel_stream and requested_kind in PIXELDRAIN_SOURCE_KINDS and pixel_keys and size_bytes <= PIXELDRAIN_LIMIT_BYTES:
+        if 'pixeldrain' in targets and not live_pixel_stream and requested_kind in PIXELDRAIN_SOURCE_KINDS and pixel_keys and size_bytes <= PIXELDRAIN_LIMIT_BYTES:
             provider_tasks["pixeldrain_url"] = lambda: upload_to_pixeldrain(local_path, pixel_keys)
-        if requested_kind in VIKINGFILE_SOURCE_KINDS and viking_hash:
+        if 'vikingfile' in targets and requested_kind in VIKINGFILE_SOURCE_KINDS and viking_hash:
             provider_tasks["vikingfile_url"] = lambda: upload_to_vikingfile(
                 local_path, viking_hash, args.upload_workers
             )
 
-        with ThreadPoolExecutor(max_workers=len(provider_tasks)) as executor:
+        if 'pixeldrain' in targets and not pixel_keys:
+            provider_errors['pixeldrain'] = 'Broker did not provide any PixelDrain API keys.'
+        with ThreadPoolExecutor(max_workers=max(1, len(provider_tasks))) as executor:
             futures = {executor.submit(task): name for name, task in provider_tasks.items()}
             for future in as_completed(futures):
                 name = futures[future]

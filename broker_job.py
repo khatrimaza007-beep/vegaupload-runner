@@ -87,6 +87,7 @@ def run_transfer(job: dict[str, object]) -> dict[str, object]:
     env["CLOUD_SOURCE_URL"] = source_url
     env["CLOUD_SOURCE_KIND"] = source_kind
     env["CLOUD_SOURCE_FILENAME"] = filename
+    env['CLOUD_TARGET_PROVIDERS'] = json.dumps(job.get('target_providers') or ['transfer', 'pixeldrain', 'vikingfile'])
     env["CLOUD_PIXELDRAIN_KEYS_JSON"] = json.dumps(pixel_keys)
     env["CLOUD_VIKINGFILE_USER_HASH"] = viking_hash
     env["CLOUD_SKYDROP_BYPASS_SECRET"] = skydrop_bypass_secret
