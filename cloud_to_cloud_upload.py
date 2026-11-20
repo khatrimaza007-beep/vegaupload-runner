@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import importlib
+import hashlib
 import json
 import os
 import re
@@ -31,6 +32,15 @@ DISK_RESERVE_BYTES = 2 * 1024 * 1024 * 1024
 MEDIA_EXTENSIONS = (".mkv", ".mp4", ".avi", ".mov", ".webm", ".zip", ".rar", ".7z")
 PIXELDRAIN_LIMIT_BYTES = 10_000_000_000
 PIXELDRAIN_UPLOAD_API = "https://pixeldrain.com/api/file"
+PIXELDRAIN_REJECTED_KEYS: dict[str, str] = {}
+
+
+def note_pixel_rejection(key: str, message: str) -> None:
+    text = message.lower()
+    if 'ip_banned' in text or 'ip address has been banned' in text:
+        return
+    if any(marker in text for marker in ('account_banned', 'banned from using pixeldrain', 'invalid api key', 'authentication_failed')):
+        PIXELDRAIN_REJECTED_KEYS[hashlib.sha256(key.encode()).hexdigest()[:12]] = message[:300]
 VIKINGFILE_API_ORIGIN = "https://vikingfile.com"
 SKYDROP_BYPASS_HEADER = "X-Vega-Worker-Key"
 SKYDROP_ORIGIN_HOSTS = {"drop1.vegadrive.me", "drop1.vegadrive.top"}
@@ -591,6 +601,7 @@ def upload_to_pixeldrain(local_path: Path, api_keys: list[str]) -> str:
             if response.is_success and isinstance(payload, dict) and payload.get("id"):
                 return f"https://pixeldrain.com/u/{payload['id']}"
             last_error = str(payload.get("message") or payload.get("value") or f"HTTP {response.status_code}")
+            note_pixel_rejection(api_key, last_error)
         except Exception as exc:  # noqa: BLE001 - try the next private account.
             last_error = f"{type(exc).__name__}: {exc}"
     raise RuntimeError(last_error[:300])
@@ -683,6 +694,7 @@ def download_http_source_with_live_pixeldrain(
             else:
                 message = payload.get("message") or payload.get("value") if isinstance(payload, dict) else ""
                 state["pixel_error"] = str(message or f"HTTP {response.status_code}")[:300]
+                note_pixel_rejection(api_keys[0], state['pixel_error'])
         except Exception as exc:  # noqa: BLE001 - retry only after staging completes.
             state["pixel_error"] = f"{type(exc).__name__}: {exc}"[:300]
 
@@ -954,6 +966,7 @@ def main() -> int:
                 "average_mib_per_second": round(size_bytes / (1024 ** 2) / max(elapsed, 0.001), 3),
                 "mode": "staged",
                 "provider_errors": provider_errors,
+                "pixeldrain_rejected_keys": dict(PIXELDRAIN_REJECTED_KEYS),
                 **provider_urls,
             }
         )
@@ -961,7 +974,7 @@ def main() -> int:
         print(f"Cloud upload completed with {len(provider_urls)}/{len(provider_tasks)} provider links.")
         return 0 if provider_urls else 1
     except Exception as exc:  # noqa: BLE001 - result artifact must report every failure.
-        result.update({"error": f"{type(exc).__name__}: {exc}", "elapsed_seconds": round(time.monotonic() - started_at, 3)})
+        result.update({"error": f"{type(exc).__name__}: {exc}", "elapsed_seconds": round(time.monotonic() - started_at, 3), 'pixeldrain_rejected_keys': dict(PIXELDRAIN_REJECTED_KEYS)})
         write_result(args.result_json, result)
         print(f"Cloud upload failed: {result['error']}", file=sys.stderr)
         return 1

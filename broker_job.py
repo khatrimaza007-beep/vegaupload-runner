@@ -134,7 +134,8 @@ def run_transfer(job: dict[str, object]) -> dict[str, object]:
             errors = result.get('provider_errors') if isinstance(result.get('provider_errors'), dict) else {}
             detail = '; '.join(f'{key}: {value}' for key, value in errors.items())
             error = str(result.get("error") or detail or "Transfer failed in the GitHub runner.")
-            return {"ok": False, "error": error[:1000], 'provider_errors': errors}
+            return {"ok": False, "error": error[:1000], 'provider_errors': errors,
+                    'pixeldrain_rejected_keys': result.get('pixeldrain_rejected_keys', {})}
 
         provider_urls = {
             "transfer_url": str(result.get("transfer_url") or ""),
@@ -150,6 +151,7 @@ def run_transfer(job: dict[str, object]) -> dict[str, object]:
             "size_bytes": result.get("size_bytes", 0),
             "elapsed_seconds": result.get("elapsed_seconds", 0),
             "provider_errors": result.get("provider_errors", {}),
+            'pixeldrain_rejected_keys': result.get('pixeldrain_rejected_keys', {}),
         }
         response.update({key: value for key, value in provider_urls.items() if value})
         return response
